@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, session, flash
 from flask_bootstrap import Bootstrap
 from flask_mysqldb import MySQL
 from flask_ckeditor import CKEditor
+import bcrypt
 import yaml
 
 app = Flask(__name__)
@@ -44,40 +45,48 @@ def blogs(id):
 
 @app.route('/register/', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST':#If request method is post then
+    if request.method == 'POST':
         userDetails = request.form#Fetch all user details
         if userDetails['password'] != userDetails['confirm_password']:#Check if passwords match
             flash('Passwords do not match! Try again.', 'danger')
             return render_template('register.html')
+
+        hashed = bcrypt.hashpw(userDetails['password'].encode('utf8'), bcrypt.gensalt())
         cur = mysql.connection.cursor()#if passwords match then start a new sql cursor
-        #Enter user details into database
+
         cur.execute("INSERT INTO user(first_name, last_name, username, email, password) "\
         "VALUES(%s,%s,%s,%s,%s)",(userDetails['first_name'], userDetails['last_name'], \
-        userDetails['username'], userDetails['email'], userDetails['password']))
+        userDetails['username'], userDetails['email'], hashed))
+
         mysql.connection.commit()#save the changes
-        cur.close()#Close the cursor
+        cur.close()
         flash('Registration successful! Please login.', 'success')
         return redirect('/login')
     return render_template('register.html')
 
 @app.route('/login/', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':#If request method is post then
+    if request.method == 'POST':
         userDetails = request.form#Fetch all user details ie login and password
         username = userDetails['username']#Fetch the username
+
         cur = mysql.connection.cursor()#Start a new sql cursor
         resultValue = cur.execute("SELECT * FROM user WHERE username = %s", ([username]))#Fetch the username
-        if resultValue > 0:#If username exits in database
+
+        if resultValue > 0:#If username exists in database
             user = cur.fetchone()#Fetch that single row from database which contains all details of that username
-            if userDetails['password'] == user['password']:#Check if passwords match
+
+            if bcrypt.checkpw(userDetails['password'].encode('utf-8'), user['password'].encode('utf-8')):#Check if passwords match
                 session['login'] = True
                 session['firstName'] = user['first_name']
                 session['lastName'] = user['last_name']
                 flash('Welcome ' + session['firstName'] +'! You have been successfully logged in', 'success')
+
             else:#If passwords do not match
                 cur.close()
                 flash('Password does not match', 'danger')
                 return render_template('login.html')
+
         else:#If the user that is trying to login is not found in database
             cur.close()
             flash('User not found', 'danger')
@@ -105,14 +114,17 @@ def write_blog():
 # View my blog
 @app.route('/my-blogs/')
 def view_blogs():
-    author = session['firstName'] + ' ' + session['lastName']
-    cur = mysql.connection.cursor()
-    result_value = cur.execute("SELECT * FROM blog WHERE author = %s",[author])
-    if result_value > 0:
-        my_blogs = cur.fetchall()
-        return render_template('my_blogs.html',my_blogs=my_blogs)
-    else:
-        return render_template('my_blogs.html',my_blogs=None)
+    try:
+        author = session['firstName'] + ' ' + session['lastName']
+        cur = mysql.connection.cursor()
+        result_value = cur.execute("SELECT * FROM blog WHERE author = %s",[author])
+        if result_value > 0:
+            my_blogs = cur.fetchall()
+            return render_template('my_blogs.html',my_blogs=my_blogs)
+        else:
+            return render_template('my_blogs.html',my_blogs=None)
+    except Exception:
+        return render_template('my_blogs.html',my_blogs="No login!")
 
 # Edit blog
 @app.route('/edit-blog/<int:id>/', methods=['GET', 'POST'])
