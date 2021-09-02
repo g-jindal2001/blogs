@@ -26,7 +26,7 @@ pip install -U -r requirements.txt
 mysql_host : 'localhost'
 mysql_user : 'root'
 mysql_password : '(Enter your MySQL password here)'
-mysql_db : 'dbms_db'
+mysql_db : 'flog_db'
 ```
 <br>
 
